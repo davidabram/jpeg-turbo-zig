@@ -471,16 +471,41 @@ fn computeVersionNumber(version: []const u8) u32 {
     return result;
 }
 
-fn computeBuildDate(allocator: std.mem.Allocator) ![]const u8 {
+pub fn computeBuildDate(allocator: std.mem.Allocator) ![]u8 {
     const epoch_seconds = std.time.timestamp();
-    const days_since_epoch = @divFloor(epoch_seconds, 86400);
-    const days_1970_to_1900 = 25567;
-    const days_since_1900 = days_since_epoch + days_1970_to_1900;
 
-    const year = 1900 + @divFloor(days_since_1900, 365);
-    const day_of_year = @mod(days_since_1900, 365);
-    const month = @divFloor(day_of_year, 30) + 1;
-    const day = @mod(day_of_year, 30) + 1;
+    const days_since_epoch = @divFloor(epoch_seconds, 86_400);
+    const days_from_ce = days_since_epoch + 719_468;
 
-    return try std.fmt.allocPrint(allocator, "{d:0>4}{d:0>2}{d:0>2}", .{ year, month, day });
+    const era = if (days_from_ce >= 0)
+        @divFloor(days_from_ce, 146_097)
+    else
+        @divFloor(days_from_ce - 146_096, 146_097);
+
+    const day_of_era = days_from_ce - era * 146_097;
+
+    const year_of_era = @divFloor(
+        day_of_era - @divFloor(day_of_era, 1_460) + @divFloor(day_of_era, 36_524) - @divFloor(day_of_era, 146_096),
+        365,
+    );
+
+    var year: i64 = year_of_era + era * 400;
+
+    const day_of_year = day_of_era - (365 * year_of_era + @divFloor(year_of_era, 4) - @divFloor(year_of_era, 100));
+
+    const month_prime = @divFloor(5 * day_of_year + 2, 153);
+
+    const day = day_of_year - @divFloor(153 * month_prime + 2, 5) + 1;
+    var month: i64 = month_prime + 3;
+
+    if (month > 12) {
+        month -= 12;
+        year += 1;
+    }
+
+    return try std.fmt.allocPrint(
+        allocator,
+        "{d:0>4}{d:0>2}{d:0>2}",
+        .{ year, month, day },
+    );
 }
